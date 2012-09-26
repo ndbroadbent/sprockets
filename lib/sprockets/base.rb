@@ -2,6 +2,7 @@ require 'sprockets/asset_attributes'
 require 'sprockets/bundled_asset'
 require 'sprockets/caching'
 require 'sprockets/processed_asset'
+require 'sprockets/unprocessed_asset'
 require 'sprockets/processing'
 require 'sprockets/server'
 require 'sprockets/static_asset'
@@ -246,10 +247,14 @@ module Sprockets
         if attributes_for(pathname).processors.any?
           if options[:bundle] == false
             circular_call_protection(pathname.to_s) do
-              ProcessedAsset.new(index, logical_path, pathname)
+              if options[:process] == false
+                UnprocessedAsset.new(index, logical_path, pathname)
+              else
+                ProcessedAsset.new(index, logical_path, pathname)
+              end
             end
           else
-            BundledAsset.new(index, logical_path, pathname)
+            BundledAsset.new(index, logical_path, pathname, options)
           end
         else
           StaticAsset.new(index, logical_path, pathname)
@@ -257,7 +262,8 @@ module Sprockets
       end
 
       def cache_key_for(path, options)
-        "#{path}:#{options[:bundle] ? '1' : '0'}"
+        options[:process] = true unless options.key?(:process)
+        "#{path}:#{options[:bundle] ? '1' : '0'}:#{options[:process] ? '1' : '0'}"
       end
 
       def circular_call_protection(path)
