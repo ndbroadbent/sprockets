@@ -53,13 +53,13 @@ module EnvironmentTests
 
   test "eco templates" do
     asset = @env["goodbye.jst"]
-    context = ExecJS.compile(asset)
+    context = ExecJS.compile(asset.body)
     assert_equal "Goodbye world\n", context.call("JST['goodbye']", :name => "world")
   end
 
   test "ejs templates" do
     asset = @env["hello.jst"]
-    context = ExecJS.compile(asset)
+    context = ExecJS.compile(asset.body)
     assert_equal "hello: world\n", context.call("JST['hello']", :name => "world")
   end
 
@@ -360,7 +360,7 @@ class TestEnvironment < Sprockets::TestCase
       File.open(filename, 'w') { |f| f.puts "->" }
       time = Time.now + 60
       File.utime(time, time, filename)
-      assert_equal "\n  (function() {});\n", @env["tmp.js"].to_s
+      assert_equal "(function() {\n\n  (function() {});\n\n}).call(this);\n", @env["tmp.js"].to_s
     end
   end
 
@@ -405,6 +405,15 @@ class TestEnvironment < Sprockets::TestCase
   test "disabling default directive preprocessor" do
     @env.unregister_preprocessor('application/javascript', Sprockets::DirectiveProcessor)
     assert_equal "// =require \"notfound\"\n;\n", @env["missing_require.js"].to_s
+  end
+
+  test "returning unprocessed assets to find sources digest" do
+    asset_processed   = @env.find_asset 'project.js'
+    asset_unprocessed = @env.find_asset 'project.js', :process => false
+
+    assert asset_unprocessed
+    assert asset_unprocessed != asset_processed
+    assert asset_unprocessed.digest != asset_processed.digest
   end
 end
 
