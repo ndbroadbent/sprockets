@@ -34,7 +34,8 @@ module Sprockets
 
       # Initialize caches
       @assets  = {}
-      @digests = {}
+      @asset_digests  = {}
+      @source_digests = {}
     end
 
     # No-op return self as index
@@ -45,10 +46,10 @@ module Sprockets
     # Cache calls to `file_digest`
     def file_digest(pathname)
       key = pathname.to_s
-      if @digests.key?(key)
-        @digests[key]
+      if @asset_digests.key?(key)
+        @asset_digests[key]
       else
-        @digests[key] = super
+        @asset_digests[key] = super
       end
     end
 
@@ -70,6 +71,25 @@ module Sprockets
         end
 
         asset
+      end
+    end
+
+    # Cache `unprocessed_sources_digest` calls.
+    def unprocessed_sources_digest(path)
+      logical_path, pathname = logical_path_and_pathname_for(path)
+
+      if digest = @source_digests[path]
+        digest
+      elsif digest = super
+        # Cache on Index, for both logical and full paths
+        @source_digests[path] = @source_digests[pathname] = digest
+
+        # Push cache upstream to Environment
+        @environment.instance_eval do
+          @source_digests[path] = @source_digests[pathname] = digest
+        end
+
+        digest
       end
     end
 

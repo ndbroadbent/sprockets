@@ -68,7 +68,7 @@ module Sprockets
     def find_asset(path, options = {})
       options[:bundle] = true unless options.key?(:bundle)
 
-      # Ensure inmemory cached assets are still fresh on every lookup
+      # Ensure in-memory cached assets are still fresh on every lookup
       if (asset = @assets[cache_key_for(path, options)]) && asset.fresh?(self)
         asset
       elsif asset = index.find_asset(path, options)
@@ -82,6 +82,7 @@ module Sprockets
         # Clear digest to be recomputed
         @digest = nil
         @assets = {}
+        @source_digests = {}
       end
   end
 end

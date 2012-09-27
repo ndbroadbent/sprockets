@@ -260,29 +260,8 @@ module Sprockets
 
     # Find asset by logical path or expanded path.
     def find_asset(path, options = {})
-      logical_path = path
-      pathname     = Pathname.new(path)
-
-      if pathname.absolute?
-        return unless stat(pathname)
-        logical_path = attributes_for(pathname).logical_path
-      else
-        begin
-          pathname = resolve(logical_path)
-
-          # If logical path is missing a mime type extension, append
-          # the absolute path extname so it has one.
-          #
-          # Ensures some consistency between finding "foo/bar" vs
-          # "foo/bar.js".
-          if File.extname(logical_path) == ""
-            expanded_logical_path = attributes_for(pathname).logical_path
-            logical_path += File.extname(expanded_logical_path)
-          end
-        rescue FileNotFound
-          return nil
-        end
-      end
+      logical_path, pathname = logical_path_and_pathname_for(path)
+      return unless logical_path
 
       build_asset(logical_path, pathname, options)
     end
@@ -293,6 +272,20 @@ module Sprockets
     #
     def [](*args)
       find_asset(*args)
+    end
+
+    def unprocessed_sources_digest(path)
+      logical_path, pathname = logical_path_and_pathname_for(path)
+      return unless logical_path
+
+      if attributes_for(pathname).processors.any?
+        asset = BundledAsset.new(index, logical_path, pathname, :process => false)
+        # Return digest in UTF-8 encoding, otherwise YAML dumps ASCII-8BIT as !binary
+        asset.digest.force_encoding("UTF-8")
+      else
+        asset = StaticAsset.new(index, logical_path, pathname)
+        asset.digest.force_encoding("UTF-8")
+      end
     end
 
     def each_entry(root, &block)
@@ -363,11 +356,16 @@ module Sprockets
         # `BundledAsset`. Otherwise use `StaticAsset` and treat is as binary.
         if attributes_for(pathname).processors.any?
           if options[:bundle] == false
-            circular_call_protection(pathname.to_s) do
-              ProcessedAsset.new(index, logical_path, pathname)
+            processed_asset = Proc.new { ProcessedAsset.new(index, logical_path, pathname, options) }
+
+            if options[:process] == false
+              processed_asset.call
+            else
+              # Only perform circular call protection for processed assets
+              circular_call_protection(pathname.to_s, &processed_asset)
             end
           else
-            BundledAsset.new(index, logical_path, pathname)
+            BundledAsset.new(index, logical_path, pathname, options)
           end
         else
           StaticAsset.new(index, logical_path, pathname)
@@ -375,7 +373,7 @@ module Sprockets
       end
 
       def cache_key_for(path, options)
-        "#{path}:#{options[:bundle] ? '1' : '0'}"
+        "#{path}:#{options[:bundle] ? '1' : '0'}:#{options[:process] ? '1' : '0'}"
       end
 
       def circular_call_protection(path)
@@ -388,6 +386,34 @@ module Sprockets
         yield
       ensure
         Thread.current[:sprockets_circular_calls] = nil if reset
+      end
+
+      def logical_path_and_pathname_for(path)
+        logical_path = path
+        pathname     = Pathname.new(path)
+
+        if pathname.absolute?
+          return unless stat(pathname)
+          logical_path = attributes_for(pathname).logical_path
+        else
+          begin
+            pathname = resolve(logical_path)
+
+            # If logical path is missing a mime type extension, append
+            # the absolute path extname so it has one.
+            #
+            # Ensures some consistency between finding "foo/bar" vs
+            # "foo/bar.js".
+            if File.extname(logical_path) == ""
+              expanded_logical_path = attributes_for(pathname).logical_path
+              logical_path += File.extname(expanded_logical_path)
+            end
+          rescue FileNotFound
+            return nil
+          end
+        end
+
+        return logical_path, pathname
       end
 
       def logical_path_for_filename(filename, filters)
